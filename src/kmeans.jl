@@ -24,10 +24,11 @@ export kmeans, loss
 # 
 # Returns:
 #   centroids - The cluster centroids represented as a list of k column vectors.
-#   labels    - A list of N cluster assignments, represented as integers so that
-#               labels[labels .== i] returns the indices of all data points assigned
-#               to cluster i, and data[labels[labels .== 1]] returns all data points
-#               assigned to cluster i.
+#   labels    - A list of N cluster assignments in the same order as data, so that
+#               the 1st data point's cluster assignment is labels[i]. The labels themselves 
+#               index into the centroids list, i.e. centroids[labels[1]] returns the 
+#               first data point's centroid.
+#
 # Usage:
 #   using Kmeans
 #   k = 5; N=200; n=10
