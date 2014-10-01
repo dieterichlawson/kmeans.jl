@@ -37,16 +37,11 @@ function kmeans(data, k)
   losses = Float64[]
   N = length(data)
   n = length(data[1])
-  # intialize the centroids and labels randomly
   centroids, labels = initialize_centroids(data, k)
   while true
-    # assign data points to nearest centroid
     labels = partition_data(data, centroids)
-    # calculate new centroids from data points
     centroids = update_centroids(data, labels, k, centroids)
-    # calculate J for this iteration
-    push!(losses,loss(data,centroids,labels))
-    # break if the improvement in J is too small
+    push!(losses, loss(data,centroids,labels))
     if length(losses) >= 2 && abs(losses[end] - losses[end-1]) <= epsilon
       break
     end
@@ -70,7 +65,7 @@ end
 # Calculates each centroid as the mean of it's data points
 function update_centroids(data, labels, k, old_centroids)
   centroids = Vector[]
-  for i = 1:k # for each centroid
+  for i = 1:k
     # get the data points assigned to the centroid
     centroid_pts = data[labels .== i]
     # if the centroid has assigned data points, set it to be their mean
