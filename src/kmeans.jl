@@ -1,131 +1,110 @@
 module Kmeans
 
-using Distances # for pairwise()
-using StatsBase # for sample()
+export kmeans
 
-export kmeans, loss
-
-# Cluster a dataset using the k-means algorithm. The k-means algorithm is covered in the
-# book in section 2.4 , but generally does the following:
+# Clusters a dataset using the k-means algorithm. The k-means algorithm is covered in the
+# book in section 2.4, and does the following:
 # 
 # repeat until convergence:
 #   assign data points to closest centroid (the assign_labels function)
 #   set centroids to be mean of their assigned data points (the calculate_centroids function)
 # 
-# This implementation of k-means runs for 100 iterations instead of checking for convergence.
-# It also picks the starting centroids using the initialize_centroids function instead of randomly 
-# initializing them. Picking starting centroids is beyond the scope of this class, so you don't 
-# need to worry about understanding the functions initialize_centroids() or kmeans_pp().
-#
 # Parameters: 
-#   data - The datset to cluster, represented as a list of N m-vectors 
+#   data - The datset to cluster, represented as an Array of N n-vectors 
 #          (column vectors of length m).
 #   k    - The number of clusters in the data.
 # 
 # Returns:
-#   centroids - The cluster centroids represented as a list of k column vectors.
-#   labels    - A list of N cluster assignments in the same order as data, so that
+#   centroids - The cluster centroids represented as an Array of k column vectors.
+#   labels    - An Array of N cluster assignments in the same order as data, so that
 #               the 1st data point's cluster assignment is labels[i]. The labels themselves 
 #               index into the centroids list, i.e. centroids[labels[1]] returns the 
 #               first data point's centroid.
+#   losses    - An array containing the value of J at each iteration.
 #
 # Usage:
-#   using Kmeans
 #   k = 5; N=200; n=10
 #   # generate a list of 200 random 10-vectors
-#   data = { rand(n) for x in 1:N }
-#   centroids, labels = kmeans(data,k)
-#   # print the loss (J) for the clustering
-#   print(loss(data,centroids,labels))
+#   data = [ rand(n) for x in 1:N ]
+#   centroids, labels, losses = kmeans(data,k)
 #   # print the vectors assigned to each cluster
 #   for i=1:k
 #     print(data[labels .== i])
 #   end
-function kmeans(data, k; iters=100)
-  # determine the size of the data
-  n,m = size(data)
-  # intialize the centroids
-  centroids = initialize_centroids(data, k)
-  labels = zeros(Int, m)
-  iter = 0
-  while iter < iters
+#
+function kmeans(data, k)
+  epsilon = 1e-6
+  losses = Float64[]
+  N = length(data)
+  n = length(data[1])
+  # intialize the centroids and labels randomly
+  centroids, labels = initialize_centroids(data, k)
+  while true
     # assign data points to nearest centroid
-    labels = assign_labels(data, centroids)
+    labels = partition_data(data, centroids)
     # calculate new centroids from data points
-    centroids = calculate_centroids(data, labels, k, centroids)
-    iter += 1
+    centroids = update_centroids(data, labels, k, centroids)
+    # calculate J for this iteration
+    push!(losses,loss(data,centroids,labels))
+    # break if the improvement in J is too small
+    if length(losses) >= 2 && abs(losses[end] - losses[end-1]) <= epsilon
+      break
+    end
   end
-  return centroids, labels
+  return centroids, labels, losses
 end
 
-# Assigns each data point in 'data' to the closest centroid in 'centroids'
-function assign_labels(data, centroids)
-  # initialize an n-vector to store labels
-  labels = zeros(Int, size(data,2))
-  for i in 1:size(data, 2) # for each data point
+# Assigns each data point to the closest centroid
+function partition_data(data, centroids)
+  labels = Int[]
+  for i in 1:length(data)
     # calculate the euclidean distance from the ith data point to each centroid
-    centroid_distances = pairwise(Euclidean(), data[:,i]'', centroids)
+    centroid_distances = pairwise_distance(data[i], centroids)
     # find the centroid closest to the ith data point
-    distance, centroid = findmin(centroid_distances)
-    labels[i] = centroid
+    distance, centroid_index = findmin(centroid_distances)
+    push!(labels, centroid_index)
   end
   return labels 
 end
 
-# Calculates each centroid's position as the mean of the data points assigned to it
-function calculate_centroids(data, labels, k, old_centroids)
-  n = size(data,1)
-  centroids = zeros(n,k)
+# Calculates each centroid as the mean of it's data points
+function update_centroids(data, labels, k, old_centroids)
+  centroids = Vector[]
   for i = 1:k # for each centroid
     # get the data points assigned to the centroid
-    centroid_data = data[:, labels .== i]
+    centroid_pts = data[labels .== i]
     # if the centroid has assigned data points, set it to be their mean
-    if size(centroid_data, 2) > 0
-      centroids[:,i] = sum(centroid_data, 2)/size(centroid_data,2)
+    if length(centroid_pts) > 0
+      push!(centroids, mean(centroid_pts))
     else # otherwise, leave it alone
-      centroids[:,i] = old_centroids[:,i]
+      push!(centroids, old_centroids[i])
     end
   end
   return centroids
 end
 
-# Calculates the loss (J) of the given clustering
+# Calculates the loss (J) of the given clustering.
 function loss(data, centroids, labels)
+  N = length(data)
   sos_dist = 0.0
-  _,m = size(data)
-  for i = 1:m
-    sos_dist += norm(data[:,i] - centroids[:,labels[i]])^2
+  for i = 1:N
+    sos_dist += norm(data[i] - centroids[labels[i]])^2
   end
-  return sos_dist*(1/m)
+  return sos_dist*(1/N)
 end
 
 # Picks the starting centroids
-# You DO NOT need to understand this function
-function initialize_centroids(data, k; num_inits=4)
-  losses = zeros(num_inits)
-  choices = {}
-  for i=1:num_inits
-    centroids = kmeans_pp(data,k)
-    push!(choices,centroids)
-    labels = assign_labels(data,centroids)
-    losses[i] = loss(data,centroids,labels)
-  end
-  val,ind = findmin(losses)
-  return choices[ind]
+# by randomly assigning data points to each centroid.
+function initialize_centroids(data, k)
+  N = length(data)
+  n = length(data[1])
+  labels = rand(1:k,N)
+  centroids = update_centroids(data, labels, k, {zeros(n) for i=1:k})
+  return centroids, labels
 end
 
-# Helper function for picking the starting centroids
-# You DO NOT need to understand this function
-function kmeans_pp(data,k)
-  n,num_obs = size(data)
-  centroids = zeros(n,k)
-  centroids[:,1] = data[:,rand(1:num_obs)]
-  for i = 2:k
-    dists = minimum(pairwise(Euclidean(), centroids[:,1:i-1]'',data),1).^2
-    cind = sample(WeightVec(vec(dists./sum(dists))))
-    centroids[:,i] = data[:,cind]
-  end
-  return centroids 
+function pairwise_distance(vector, vectors)
+  return Float64[norm(vector - vectors[i]) for i=1:length(vectors)]
 end
 
 end
